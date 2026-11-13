@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Twist Screensaver</title>
+  <script>
+    /* ============================================================
+       ค่าเริ่มต้น (แก้ตัวเลขแล้วรีเฟรชหน้า)
+       ปรับจากหน้าจอได้ด้วย: เลื่อนเมาส์ แล้วกดปุ่มตั้งค่ามุมขวาล่าง
+       ค่าที่ปรับจากหน้าจอจะถูกจำไว้และใช้แทนค่าในไฟล์นี้
+       กด "คืนค่าเริ่มต้น" ในหน้าตั้งค่าเพื่อกลับมาใช้ค่าในไฟล์
+       ============================================================ */
+    const SETTINGS = {
+      theme:       "auto", // "auto" = ตามเครื่อง, "light" = สว่าง, "dark" = มืด
+
+      // ---- โลโก้ตรงกลาง ----
+      size:        20,   // ขนาดโลโก้ เป็น % ของด้านที่สั้นกว่าของจอ
+      maxSize:     360,  // ขนาดใหญ่สุด (px)
+      thickness:   7,    // ความหนาเส้น
+
+      drawTime:    2,    // เวลาวาดเส้นจนเต็ม (วินาที)  ← น้อย = เร็วขึ้น
+      holdTime:    3,    // เวลาค้างโลโก้เต็ม (วินาที)   ← มาก = ค้างนานขึ้น
+      eraseTime:   2,    // เวลาลบเส้นออก (วินาที)
+      blankTime:   0,    // เวลาจอว่างก่อนเริ่มรอบใหม่ (วินาที)
+      lineGap:     0.15, // แต่ละเส้นเริ่มห่างกันกี่วินาที (0 = พร้อมกัน)
+
+      // ---- พื้นหลัง ----
+      background:  true, // โลโก้ใหญ่วาดอยู่ด้านหลัง (true = เปิด, false = ปิด)
+      bgSize:      230,  // ขนาดโลโก้พื้นหลัง เป็น % ของด้านที่สั้นกว่าของจอ
+      bgThickness: 1.5,  // ความหนาเส้นโลโก้พื้นหลัง
+      bgOpacity:   5,   // ความเข้มโลโก้พื้นหลัง (0–100)
+      bgSlowdown:  2.5,  // โลโก้พื้นหลังช้ากว่าตัวกลางกี่เท่า
+      glow:        true, // แสงสีฟุ้งๆ ด้านหลังแบบ Apple (true = เปิด, false = ปิด)
+
+      // ---- สี ----
+      lightBg: "#F4F5F7", lightLine: "#4E7A2A", lightGlow: ["#C9E28A", "#9ED8C0", "#E9F2CF"],
+      darkBg:  "#0E0F12", darkLine:  "#d6d6d6", darkGlow:  ["#192d0c", "#102e27", "#27340e"],
+    };
+    /* ============================================================ */
+  </script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+
+    body {
+      background: var(--bg);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Leelawadee UI", sans-serif;
+      color: var(--text);
+      transition: background-color .8s ease;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    :root[data-theme="light"] {
+      --text: #1D1F24; --muted: #6B6F78;
+      --glass: rgba(255,255,255,.62); --hair: rgba(0,0,0,.08); --track: rgba(120,120,128,.2);
+      --glow-op: .55;
+    }
+    :root[data-theme="dark"] {
+      --text: #F2F3F5; --muted: #9A9DA6;
+      --glass: rgba(36,37,42,.58); --hair: rgba(255,255,255,.1); --track: rgba(120,120,128,.32);
+      --glow-op: .6;
+    }
+
+    /* ---------- เส้นโลโก้ ---------- */
+    .logo { height: auto; overflow: visible; color: var(--line); transition: color .8s ease; }
+    .logo path {
+      fill: none;
+      stroke: currentColor;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      stroke-dasharray: 1 1;
+      stroke-dashoffset: 1;
+    }
+    .main { position: relative; z-index: 2; width: var(--size); }
+    .main path { stroke-width: var(--thickness); }
+
+    /* ---------- พื้นหลัง ---------- */
+    .layer {
+      position: fixed; inset: 0;
+      display: grid; place-items: center;
+      pointer-events: none;
+      transition: opacity 1.2s ease;
+    }
+    .layer.off { opacity: 0; }
+
+    .glow { z-index: 0; overflow: hidden; filter: blur(90px) saturate(140%); }
+    .glow:not(.off) { opacity: var(--glow-op); }
+    .glow i {
+      position: absolute;
+      width: 70vmax; height: 70vmax;
+      border-radius: 50%;
+      transition: background .8s ease;
+    }
+    .glow i:nth-child(1) { background: radial-gradient(closest-side, var(--g1), transparent); left: -20vmax; top: -25vmax; animation: drift1 28s ease-in-out infinite alternate; }
+    .glow i:nth-child(2) { background: radial-gradient(closest-side, var(--g2), transparent); right: -25vmax; bottom: -30vmax; animation: drift2 34s ease-in-out infinite alternate; }
+    .glow i:nth-child(3) { background: radial-gradient(closest-side, var(--g3), transparent); left: 30vw; top: 20vh; width: 50vmax; height: 50vmax; animation: drift3 40s ease-in-out infinite alternate; }
+    @keyframes drift1 { to { transform: translate(25vw, 20vh) scale(1.15); } }
+    @keyframes drift2 { to { transform: translate(-30vw, -15vh) scale(.9); } }
+    @keyframes drift3 { to { transform: translate(-25vw, 25vh) scale(1.2); } }
+
+    .big-wrap { z-index: 1; }
+    .big-wrap:not(.off) { opacity: var(--bg-opacity); }
+    .big { width: var(--bg-size); animation: breathe 24s ease-in-out infinite alternate; }
+    .big path { stroke-width: var(--bg-thickness); }
+    @keyframes breathe { from { transform: scale(1) rotate(-2deg); } to { transform: scale(1.06) rotate(2deg); } }
+
+    /* ---------- ปุ่มและหน้าตั้งค่า (สไตล์กระจกฝ้า) ---------- */
+    .glass {
+      background: var(--glass);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      backdrop-filter: blur(28px) saturate(180%);
+      border: .5px solid var(--hair);
+      box-shadow: 0 10px 40px rgba(0,0,0,.12);
+    }
+    .gear {
+      position: fixed; right: 20px; bottom: 20px; z-index: 5;
+      width: 32px; height: 32px; border-radius: 50%;
+      display: grid; place-items: center;
+      color: var(--text); cursor: pointer; padding: 0;
+      opacity: .35; box-shadow: none;
+      transition: opacity .5s ease, transform .2s ease;
+    }
+    /* ชี้เมาส์หรือเปิดหน้าตั้งค่าอยู่ ปุ่มจะชัดขึ้น */
+    .gear:hover, .gear:focus-visible, .gear[aria-expanded="true"] { opacity: 1; }
+    .gear:hover { transform: scale(1.06); }
+    .gear svg { width: 15px; height: 15px; }
+
+    .panel {
+      position: fixed; right: 20px; bottom: 62px; z-index: 5;
+      width: min(320px, calc(100vw - 32px));
+      max-height: calc(100vh - 110px); overflow: auto;
+      border-radius: 20px; padding: 16px;
+      display: grid; gap: 14px;
+      transform-origin: bottom right;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    .panel[hidden] { display: grid !important; opacity: 0; transform: scale(.96) translateY(6px); pointer-events: none; visibility: hidden; }
+    .panel h3 { margin: 0; font-size: 15px; font-weight: 600; }
+    .group { display: grid; gap: 10px; padding-top: 12px; border-top: .5px solid var(--hair); }
+    .group-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+    .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--track); border-radius: 9px; padding: 2px; }
+    .seg button {
+      font: inherit; font-size: 13px; border: 0; background: none; color: var(--text);
+      padding: 5px 0; border-radius: 7px; cursor: pointer;
+    }
+    .seg button[aria-pressed="true"] { background: var(--glass); box-shadow: 0 1px 4px rgba(0,0,0,.15); font-weight: 600; }
+
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .row output { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .slider { display: grid; gap: 4px; }
+    input[type=range] { width: 100%; accent-color: var(--line); margin: 0; }
+
+    .sw {
+      appearance: none; -webkit-appearance: none; margin: 0; flex-shrink: 0;
+      width: 44px; height: 26px; border-radius: 99px; background: var(--track);
+      position: relative; cursor: pointer; transition: background .2s ease;
+    }
+    .sw::before {
+      content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px;
+      border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2);
+      transition: transform .2s ease;
+    }
+    .sw:checked { background: var(--line); }
+    .sw:checked::before { transform: translateX(18px); }
+
+    .actions { display: flex; gap: 8px; }
+    .actions button {
+      flex: 1; font: inherit; font-size: 13px; padding: 8px; border-radius: 10px; cursor: pointer;
+      border: 0; background: var(--track); color: var(--text);
+    }
+    .muted { color: var(--muted); }
+    .swatches { display: flex; gap: 6px; }
+    .swatches input {
+      -webkit-appearance: none; appearance: none;
+      width: 26px; height: 26px; padding: 0; border: .5px solid var(--hair);
+      border-radius: 50%; background: none; cursor: pointer; overflow: hidden;
+    }
+    .swatches input::-webkit-color-swatch-wrapper { padding: 0; }
+    .swatches input::-webkit-color-swatch { border: 0; border-radius: 50%; }
+    .swatches input::-moz-color-swatch { border: 0; border-radius: 50%; }
+    .hint { font-size: 12px; color: var(--muted); margin: 0; }
+    kbd { font: inherit; padding: 0 5px; border-radius: 4px; background: var(--track); }
+
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+
+    /* ไม่ขยับเมาส์ 3 วินาที: ซ่อนเคอร์เซอร์และปุ่มตั้งค่า */
+    body.idle { cursor: none; }
+    body.idle .gear { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div class="layer glow" id="glow" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="layer big-wrap" id="bigWrap" aria-hidden="true">
+    <svg class="logo big" viewBox="205 -10 735 940"></svg>
+  </div>
+  <svg class="logo main" viewBox="205 -10 735 940" role="img" aria-label="twist photobooth"></svg>
+
+  <button type="button" class="gear glass" id="gear" aria-label="ตั้งค่า" aria-expanded="false" aria-controls="panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" />
+    </svg>
+  </button>
+
+  <div class="panel glass" id="panel" hidden>
+    <h3>ตั้งค่า</h3>
+
+    <div class="seg" role="group" aria-label="โหมดภาพ">
+      <button type="button" data-theme-btn="auto">อัตโนมัติ</button>
+      <button type="button" data-theme-btn="light">สว่าง</button>
+      <button type="button" data-theme-btn="dark">มืด</button>
+    </div>
+
+    <div class="group">
+      <span class="group-title">พื้นหลัง</span>
+      <label class="row"><span>โลโก้ใหญ่ด้านหลัง</span><input type="checkbox" class="sw" role="switch" data-key="background"></label>
+      <label class="row"><span>แสงฟุ้ง</span><input type="checkbox" class="sw" role="switch" data-key="glow"></label>
+      <label class="slider"><span class="row"><span>ขนาดโลโก้ด้านหลัง</span><output data-out="bgSize"></output></span>
+        <input type="range" data-key="bgSize" min="50" max="400" step="5" data-unit="%"></label>
+      <label class="slider"><span class="row"><span>ความเข้มโลโก้ด้านหลัง</span><output data-out="bgOpacity"></output></span>
+        <input type="range" data-key="bgOpacity" min="5" max="60" step="1" data-unit="%"></label>
+      <div class="row">
+        <span>สีแสงฟุ้ง <small class="muted" id="glowMode"></small></span>
+        <span class="swatches">
+          <input type="color" data-glow="0" aria-label="สีแสงฟุ้ง 1">
+          <input type="color" data-glow="1" aria-label="สีแสงฟุ้ง 2">
+          <input type="color" data-glow="2" aria-label="สีแสงฟุ้ง 3">
+        </span>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="group-title">โลโก้ตรงกลาง</span>
+      <div class="row">
+        <span>สีโลโก้ <small class="muted" id="lineMode"></small></span>
+        <span class="swatches"><input type="color" id="lineColor" aria-label="สีโลโก้"></span>
+      </div>
+      <label class="slider"><span class="row"><span>ขนาด</span><output data-out="size"></output></span>
+        <input type="range" data-key="size" min="10" max="60" step="1" data-unit="%"></label>
+      <label class="slider"><span class="row"><span>ความหนาเส้น</span><output data-out="thickness"></output></span>
+        <input type="range" data-key="thickness" min="1" max="24" step="0.5"></label>
+    </div>
+
+    <div class="group">
+      <span class="group-title">ความเร็ว</span>
+      <label class="slider"><span class="row"><span>เวลาวาด</span><output data-out="drawTime"></output></span>
+        <input type="range" data-key="drawTime" min="0.5" max="6" step="0.1" data-unit=" วิ" data-anim></label>
+      <label class="slider"><span class="row"><span>เวลาค้างโลโก้</span><output data-out="holdTime"></output></span>
+        <input type="range" data-key="holdTime" min="0" max="15" step="0.5" data-unit=" วิ" data-anim></label>
+      <label class="slider"><span class="row"><span>เวลาลบ</span><output data-out="eraseTime"></output></span>
+        <input type="range" data-key="eraseTime" min="0.5" max="6" step="0.1" data-unit=" วิ" data-anim></label>
+    </div>
+
+    <div class="actions">
+      <button type="button" id="fsBtn">เต็มจอ</button>
+      <button type="button" id="resetBtn">คืนค่าเริ่มต้น</button>
+    </div>
+    <p class="hint">ปุ่มลัด: <kbd>T</kbd> เปลี่ยนโหมด · <kbd>B</kbd> โลโก้ด้านหลัง · <kbd>G</kbd> แสงฟุ้ง · <kbd>F</kbd> เต็มจอ · <kbd>S</kbd> ตั้งค่า</p>
+  </div>
+
+  <script>
+    const PATHS = [
+      "M330 0H860L930 82V415Q925 478 860 510V520H930V836L860 918H312Q228 905 216 820V520H283L216 438V100Q240 8 330 0Z",
+      "M838 708L836 410A267 267 0 1 0 555 708Z",
+      "M750 606L748 405A177 177 0 1 0 550 605Z",
+      "M754 122a38 38 0 1 0 .1 0Z",
+    ];
+    const PANEL_KEYS = ["theme", "background", "glow", "bgSize", "bgOpacity", "size", "thickness", "drawTime", "holdTime", "eraseTime", "lightGlow", "darkGlow", "lightLine", "darkLine"];
+    const STORE = "twist-screensaver";
+
+    const load = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
+    const save = () => {
+      try {
+        const out = {};
+        PANEL_KEYS.forEach(k => { if (JSON.stringify(S[k]) !== JSON.stringify(SETTINGS[k])) out[k] = S[k]; });
+        localStorage.setItem(STORE, JSON.stringify(out));
+      } catch {}
+    };
+    let S = { ...SETTINGS, ...load() };
+
+    // วาดเส้นโลโก้ลงใน SVG ทั้งสองตัว
+    const NS = "http://www.w3.org/2000/svg";
+    const fill = svg => PATHS.map(d => {
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", d);
+      p.setAttribute("pathLength", "1");
+      svg.appendChild(p);
+      return p;
+    });
+    const mainPaths = fill(document.querySelector(".main"));
+    const bigPaths = fill(document.querySelector(".big"));
+
+    // ---------- หน้าตา ----------
+    const html = document.documentElement;
+    const css = html.style;
+    const sysDark = matchMedia("(prefers-color-scheme: dark)");
+
+    const currentMode = () => S.theme === "auto" ? (sysDark.matches ? "dark" : "light") : S.theme;
+    const glowKey = () => currentMode() === "dark" ? "darkGlow" : "lightGlow";
+
+    function applyLook() {
+      const mode = currentMode();
+      const dark = mode === "dark";
+      const glow = dark ? S.darkGlow : S.lightGlow;
+      html.dataset.theme = mode;
+      css.setProperty("--bg", dark ? S.darkBg : S.lightBg);
+      css.setProperty("--line", dark ? S.darkLine : S.lightLine);
+      glow.forEach((c, i) => css.setProperty(`--g${i + 1}`, c));
+      css.setProperty("--size", `min(${S.size}vmin, ${S.maxSize}px)`);
+      css.setProperty("--thickness", S.thickness);
+      css.setProperty("--bg-size", `${S.bgSize}vmin`);
+      css.setProperty("--bg-thickness", S.bgThickness);
+      css.setProperty("--bg-opacity", S.bgOpacity / 100);
+      document.getElementById("bigWrap").classList.toggle("off", !S.background);
+      document.getElementById("glow").classList.toggle("off", !S.glow);
+    }
+    sysDark.addEventListener("change", () => { applyLook(); syncPanel(); });
+
+    // ---------- แอนิเมชัน ----------
+    const ease = "cubic-bezier(.65, 0, .35, 1)";
+    function run(paths, slow) {
+      const draw = S.drawTime * slow, hold = S.holdTime * slow, erase = S.eraseTime * slow;
+      const total = draw + hold + erase + S.blankTime * slow;
+      const at = t => t / total;
+      const frames = [
+        { strokeDashoffset: 1,  offset: 0, easing: ease },
+        { strokeDashoffset: 0,  offset: at(draw) },
+        { strokeDashoffset: 0,  offset: at(draw + hold), easing: ease },
+        { strokeDashoffset: -1, offset: at(draw + hold + erase) },
+        { strokeDashoffset: -1, offset: 1 },
+      ];
+      paths.forEach((p, i) => {
+        p.getAnimations().forEach(a => a.cancel());
+        p.animate(frames, {
+          duration: total * 1000,
+          delay: i * S.lineGap * slow * 1000,
+          iterations: Infinity,
+          fill: "backwards",
+        });
+      });
+    }
+    const animateAll = () => { run(mainPaths, 1); run(bigPaths, S.bgSlowdown); };
+
+    // ---------- หน้าตั้งค่า ----------
+    const panel = document.getElementById("panel");
+    const gear = document.getElementById("gear");
+
+    function syncPanel() {
+      document.querySelectorAll("[data-theme-btn]").forEach(b =>
+        b.setAttribute("aria-pressed", String(b.dataset.themeBtn === S.theme)));
+      document.querySelectorAll("[data-key]").forEach(el => {
+        const k = el.dataset.key;
+        if (el.type === "checkbox") el.checked = !!S[k];
+        else {
+          el.value = S[k];
+          document.querySelector(`[data-out="${k}"]`).textContent = S[k] + (el.dataset.unit || "");
+        }
+      });
+      // สีแสงฟุ้งแยกกันระหว่างโหมดสว่างกับมืด แสดงชุดสีของโหมดที่ใช้อยู่
+      const glow = S[glowKey()];
+      document.querySelectorAll("[data-glow]").forEach(el => { el.value = glow[el.dataset.glow]; });
+      const modeLabel = currentMode() === "dark" ? "(โหมดมืด)" : "(โหมดสว่าง)";
+      document.getElementById("glowMode").textContent = modeLabel;
+      // สีโลโก้ก็แยกตามโหมดเหมือนกัน
+      document.getElementById("lineColor").value = S[lineKey()];
+      document.getElementById("lineMode").textContent = modeLabel;
+    }
+
+    const lineKey = () => currentMode() === "dark" ? "darkLine" : "lightLine";
+    document.getElementById("lineColor").addEventListener("input", e => {
+      S[lineKey()] = e.target.value;
+      applyLook();
+      save();
+    });
+
+    document.querySelectorAll("[data-glow]").forEach(el => el.addEventListener("input", () => {
+      const k = glowKey();
+      S[k] = [...S[k]];
+      S[k][el.dataset.glow] = el.value;
+      applyLook();
+      save();
+    }));
+
+    function set(key, value, reanimate) {
+      S[key] = value;
+      applyLook();
+      if (reanimate) animateAll();
+      syncPanel();
+      save();
+    }
+
+    document.querySelectorAll("[data-theme-btn]").forEach(b =>
+      b.addEventListener("click", () => set("theme", b.dataset.themeBtn)));
+    document.querySelectorAll("[data-key]").forEach(el => {
+      if (el.type === "checkbox") el.addEventListener("change", () => set(el.dataset.key, el.checked));
+      else {
+        el.addEventListener("input", () => set(el.dataset.key, Number(el.value)));
+        // ปรับเวลาแล้วค่อยเริ่มแอนิเมชันใหม่ตอนปล่อยเมาส์ จะได้ไม่กระตุก
+        if ("anim" in el.dataset) el.addEventListener("change", animateAll);
+      }
+    });
+
+    const openPanel = open => {
+      panel.hidden = !open;
+      gear.setAttribute("aria-expanded", String(open));
+    };
+    gear.addEventListener("click", () => openPanel(panel.hidden));
+    document.addEventListener("pointerdown", e => {
+      if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target)) openPanel(false);
+    });
+
+    const toggleFullscreen = () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else html.requestFullscreen?.().catch(() => {});
+    };
+    document.getElementById("fsBtn").addEventListener("click", toggleFullscreen);
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      S = { ...SETTINGS };
+      try { localStorage.removeItem(STORE); } catch {}
+      applyLook(); animateAll(); syncPanel();
+    });
+
+    // ---------- ปุ่มลัด ----------
+    const THEMES = ["auto", "light", "dark"];
+    document.addEventListener("keydown", e => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "t") set("theme", THEMES[(THEMES.indexOf(S.theme) + 1) % 3]);
+      else if (k === "b") set("background", !S.background);
+      else if (k === "g") set("glow", !S.glow);
+      else if (k === "f") toggleFullscreen();
+      else if (k === "s") openPanel(panel.hidden);
+      else if (k === "escape") openPanel(false);
+    });
+
+    // ---------- ซ่อนเคอร์เซอร์และปุ่มเมื่อไม่ขยับ ----------
+    let idleTimer;
+    const wake = () => {
+      document.body.classList.remove("idle");
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => { if (panel.hidden) document.body.classList.add("idle"); }, 3000);
+    };
+    ["pointermove", "pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, wake));
+
+    applyLook();
+    animateAll();
+    syncPanel();
+    wake();
+  </script>
+</body>
+</html>
